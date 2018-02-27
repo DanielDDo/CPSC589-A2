@@ -16,54 +16,29 @@ int w, h;                 // width and height values
 double mouseX, mouseY;    // hold the X and Y pos of the mouse
 vector<glm::vec2> cps;    // Control Point array
 vector<glm::vec2> bspline;// BSpline Point array
+vector<float> weights;    // Control Point Weight array
 vector<int> sks;          // Standard Knot Sequence
 vector<float> U;          // Normalize Standard Knot Sequence
 int selected = -1;        // hold the index of the point we've clicked. -1 means we dont have anything selected
 float selectDistance = 0.03f; // size of the point so it's easier to click it
-float delta_u = 0.001f;     // u step size
+float pt_u = 0.0f;           // u parameter
+float delta_u = 0.0001f;     // u step size
+glm::vec2 u_coord;           // u coordinate
 
-int k = 3;  // Order (degree + 1)
+int k = 2;  // Order (degree + 1)
 int m = 0;  // Number of control points
-
-
-void printVecArr(vector<glm::vec2> arr) {
-  for (int i = 0; i < arr.size(); i++) {
-    cout << "<" << arr[i].x << "," << arr[i].y << ">" << endl;
-  }
-  cout << endl;
-}
-void printArrint(vector<int> arr) {
-  cout << arr.size() << endl;
-  cout << "{";
-  for (int i = 0; i < arr.size()-1; i++) {
-    cout << arr[i] << ", ";
-  }
-  cout << arr[arr.size()-1] << "}" << endl;
-}
-
-void printArrfloat(vector<float> arr) {
-  cout << arr.size() << endl;
-  cout << "{";
-  for (int i = 0; i < arr.size()-1; i++) {
-    cout << arr[i] << ", ";
-  }
-  cout << arr[arr.size()-1] << "}" << endl;
-}
 
 void updateKnotSeq() {
   vector<int> knots;
   // calculate knot seq info
-  int numKnots = k + m + 1;   // total number of knots
+  int numKnots = k + m;   // total number of knots
   int rKnots = numKnots - 2*k;  // remaining knots (standard knot has multiplicity at the knots)
-
   for (int i = 0; i < k; i++) {
     knots.push_back(0);
   }
-
   for (int i = 0; i < rKnots; i++) {
     knots.push_back(i+1);
   }
-
   for (int i = 0; i < k; i++) {
     if (rKnots + 1 < 1) {
       knots.push_back(1);
@@ -71,18 +46,12 @@ void updateKnotSeq() {
       knots.push_back(rKnots+1);
     }
   }
-
   sks = knots;
 }
 
 void normalizeKnotSeq() {
   vector<float> knots;
-
-  float uniStepSize = m - k + 2;
-  if (uniStepSize <= 0.0f) {
-    uniStepSize = 1.0f;
-  }
-
+  float uniStepSize = m - k + 1;
   for (int i = 0; i < sks.size(); i++) {
     knots.push_back(sks[i]/uniStepSize);
   }
@@ -91,25 +60,26 @@ void normalizeKnotSeq() {
 }
 
 int delta(float u, int k, int m) {
-  for (int i = 0; i < m + k-1; i++) {
+  for (int i = 0; i < m+k-2; i++) {
     if (u >= U[i] && u < U[i+1]) {
       return i;
     }
   }
+  return -1;
 }
 
 glm::vec2 E_delta_1(float u, int k, int m) {
   vector<glm::vec2> c;
+  vector<float> w;
   int d = delta(u, k, m);
-  cout << d << endl;
-  for (int i = 0; i < k-1; i++) {
-    c.push_back(cps[d-i]);
+  for (int i = 0; i <= k-1; i++) {
+    c.push_back(cps[d-i] * weights[d-i]);
   }
-  for (int r = k; r < 2; r--) {
+  for (int r = k; r >= 2; r--) {
     int i = d;
-    for (int s = 0; s < r-2; s++) {
+    for (int s = 0; s <= r-2; s++) {
       float omega = (u-U[i])/(U[i+r-1]-U[i]);
-      c[s] = omega * c[s] + (1-omega) * c[s+1];
+      c[s] = (omega * c[s] + (1-omega) * c[s+1]);
       i = i-1;
     }
   }
@@ -119,12 +89,19 @@ glm::vec2 E_delta_1(float u, int k, int m) {
 void renderBSpline() {
   vector<glm::vec2> curvepoints;
   float u = 0.0f;
-  for (u = 0.0f; u < 1.0f; u+=delta_u){
+  while (u < 1.0f) {
     glm::vec2 p = E_delta_1(u, k, m);
     curvepoints.push_back(p);
+    u += delta_u;
   }
-
   bspline = curvepoints;
+}
+
+void updateBSpline() {
+  m = cps.size();
+  updateKnotSeq();
+  normalizeKnotSeq();
+  renderBSpline();
 }
 
 /*************************************
@@ -141,35 +118,38 @@ void render() {
   glMatrixMode(GL_PROJECTION);  // scene - how it gets projected onto the screen
   glLoadIdentity();
   glOrtho(-1, 1, -1, 1, -1, 1); // view volume is a cube, which goes from -1 to 1 in all directions
-  //gluPerspective(fov, aspect ratio, near plane, far plane);
-  //glFrustum can also be used over gluPerspective
 
-  //renderBSpline();
+  if (m >= k) {
+    renderBSpline();
+    u_coord = E_delta_1(pt_u, k, m);
+  }
 
   glPointSize(7);
   glBegin(GL_POINTS); // GL_POINTS, GL_QUADS, GL_LINES
   for(int i = 0; i < cps.size(); i++) {
     glColor3f(1.0f, 1.0f, 1.0f);
-    if(i == selected) {
+    if (i == selected) {
       glColor3f(1.0f, 0.0f, 0.0f);
     }
     glVertex2f(cps[i].x, cps[i].y);
   }
   glEnd();
 
-  /*glBegin(GL_LINE_STRIP);
-  glColor3f(1.0f, 0.0f, 0.0f);
-  for(int i = 0; i < cps.size(); i++) {
-    glVertex2f(cps[i].x, cps[i].y);
-  }
-  glEnd();
-*/
   glBegin(GL_LINE_STRIP);
   glColor3f(1.0f, 1.0f, 1.0f);
   for (int i = 0; i < bspline.size(); i++) {
     glVertex2f(bspline[i].x, bspline[i].y);
   }
   glEnd();
+
+  if (m >= k) {
+    glPointSize(10);
+    glBegin(GL_POINTS);
+    glColor3f(1.0f, 1.0f, 0.0f);
+    glVertex2f(u_coord.x, u_coord.y);
+    glEnd();
+  }
+
 }
 
 
@@ -181,21 +161,40 @@ void keyboard(GLFWwindow *sender, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE) {
       glfwSetWindowShouldClose(window, 1);
     }
-    if (key == GLFW_KEY_A) {
-      renderBSpline();
-      printVecArr(bspline);
+    if (key == GLFW_KEY_W) {
+      if (k >= m) {
+        k = m;
+      } else {
+        k += 1;
+      }
+      cout << "k: " << k << endl;
+      updateBSpline();
     }
     if (key == GLFW_KEY_S) {
-      printArrfloat(U);
-    }
-    if (key == GLFW_KEY_D) {
-      for (float u = 0.0f; u < 1.0f; u+=0.1f) {
-        cout <<"delta(" << u << ") = " << delta(u, k, m) << endl;
+      if (k-1 < 2) {
+        k = 2;
+      } else {
+        k-=1;
       }
+      cout << "k: " << k << endl;
+      updateBSpline();
     }
-    if (key == GLFW_KEY_F) {
-      printVecArr(cps);
+  }
+  if (key == GLFW_KEY_D && action == GLFW_REPEAT | GLFW_PRESS) {
+    if (pt_u+0.005f >= 0.9999f) {
+      pt_u = 0.9999f;
+    } else {
+      pt_u += 0.005f;
     }
+    printf("u: %.3f\n", pt_u);
+  }
+  if (key == GLFW_KEY_A && action == GLFW_REPEAT | GLFW_PRESS) {
+    if (pt_u-0.005f < 0.0f) {
+      pt_u = 0.0f;
+    } else {
+      pt_u -= 0.005f;
+    }
+    printf("u: %.3f\n", pt_u);
   }
 
 }
@@ -209,9 +208,12 @@ void mouseClick(GLFWwindow *sender, int button, int action, int mods) {
     }
     if (button == GLFW_MOUSE_BUTTON_LEFT && selected == -1) {
       cps.push_back(glm::vec2(mouseX, mouseY));
+      weights.push_back(1.0f);
+
     }
     if (button == GLFW_MOUSE_BUTTON_RIGHT && selected != -1) {
       cps.erase(cps.begin() + selected);
+      weights.erase(weights.begin() + selected);
       selected = -1;
     }
     m = cps.size();
