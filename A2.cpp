@@ -71,19 +71,22 @@ int delta(float u, int k, int m) {
 glm::vec2 E_delta_1(float u, int k, int m) {
   vector<glm::vec2> c;
   vector<float> w;
+  float sumWeight = 0.0;
   int d = delta(u, k, m);
   for (int i = 0; i <= k-1; i++) {
     c.push_back(cps[d-i] * weights[d-i]);
+    w.push_back(weights[d-i]);
   }
   for (int r = k; r >= 2; r--) {
     int i = d;
     for (int s = 0; s <= r-2; s++) {
       float omega = (u-U[i])/(U[i+r-1]-U[i]);
+      w[s] = (omega * w[s] + (1-omega) * w[s+1]);
       c[s] = (omega * c[s] + (1-omega) * c[s+1]);
       i = i-1;
     }
   }
-  return c[0];
+  return c[0]/w[0];
 }
 
 void renderBSpline() {
@@ -157,7 +160,7 @@ void render() {
 ********* USER INPUT CODE *********
 **********************************/
 void keyboard(GLFWwindow *sender, int key, int scancode, int action, int mods) {
-  if (action == GLFW_PRESS) {
+  if (action == GLFW_PRESS | GLFW_REPEAT) {
     if (key == GLFW_KEY_ESCAPE) {
       glfwSetWindowShouldClose(window, 1);
     }
@@ -179,24 +182,35 @@ void keyboard(GLFWwindow *sender, int key, int scancode, int action, int mods) {
       cout << "k: " << k << endl;
       updateBSpline();
     }
-  }
-  if (key == GLFW_KEY_D && action == GLFW_REPEAT | GLFW_PRESS) {
-    if (pt_u+0.005f >= 0.9999f) {
-      pt_u = 0.9999f;
-    } else {
-      pt_u += 0.005f;
+    if (key == GLFW_KEY_D) {
+      if (pt_u+0.005f >= 0.9999f) {
+        pt_u = 0.9999f;
+      } else {
+        pt_u += 0.005f;
+      }
+      printf("u: %.3f\n", pt_u);
     }
-    printf("u: %.3f\n", pt_u);
-  }
-  if (key == GLFW_KEY_A && action == GLFW_REPEAT | GLFW_PRESS) {
-    if (pt_u-0.005f < 0.0f) {
-      pt_u = 0.0f;
-    } else {
-      pt_u -= 0.005f;
+    if (key == GLFW_KEY_A) {
+      if (pt_u-0.005f < 0.0f) {
+        pt_u = 0.0f;
+      } else {
+        pt_u -= 0.005f;
+      }
+      printf("u: %.3f\n", pt_u);
     }
-    printf("u: %.3f\n", pt_u);
+    if (key == GLFW_KEY_Q && selected != -1) {
+      weights[selected] += 0.1f;
+      printf("weights[%d] = %.1f\n", selected, weights[selected]);
+    }
+    if (key == GLFW_KEY_E && selected != -1) {
+      if (weights[selected] - 0.1f < 0.0f) {
+        weights[selected] = 0.0f;
+      } else {
+        weights[selected] -= 0.1f;
+      }
+      printf("weights[%d] = %.1f\n", selected, weights[selected]);
+    }
   }
-
 }
 
 void mouseClick(GLFWwindow *sender, int button, int action, int mods) {
@@ -209,7 +223,6 @@ void mouseClick(GLFWwindow *sender, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && selected == -1) {
       cps.push_back(glm::vec2(mouseX, mouseY));
       weights.push_back(1.0f);
-
     }
     if (button == GLFW_MOUSE_BUTTON_RIGHT && selected != -1) {
       cps.erase(cps.begin() + selected);
@@ -231,10 +244,9 @@ void mousePos(GLFWwindow *sender, double mX, double mY) {
   mouseY = (-2 * mY / h) + 1; // want -1 at h, and 1 at 0.
 
   if (selected != -1) {
-    cps[selected] = glm::vec2(mouseX, mouseY);
+      cps[selected] = glm::vec2(mouseX, mouseY);
   }
 }
-
 /********************************
 ************ MAIN ***************
 ********************************/
